@@ -62,7 +62,7 @@ const catnameinternal =
 };
 
 var xprhours;
-var cattotals = {C: 0, A: 0, S: 0, T: 0};
+var cattotals;
 
 // CAS Main Page Stuff
 function setup_cas()
@@ -85,6 +85,7 @@ function setup_cas()
 	casexptitle.append("<small>)</small>");
 	
 	xprhours = {};
+	cattotals = {C: 0, A: 0, S: 0, T: 0};
 	
 	// An "activity tile" is the entry for an Experience.  I'm not sure
 	// which name I love more.  But here's where to add things to each
