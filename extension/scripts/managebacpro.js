@@ -19,15 +19,104 @@
 // xpr means Experience
 // cat means category
 
-// This thing gets stored as JSON in a special reflection and contains
-// all new persistent state (*that's the plan, not in this commit)
-var mbpsettings =
-{
-	ident: "MBPRO 1" // format versioning and must be unique
-};
-var settingsid; // Portfolio ID of settings object
+// Forms aren't accepted unless a CSRF token sent by ManageBac is
+// included in the header.  JQuery doesn't include it with AJAX
+// requests automatically, so get it manually.
+var csrftoken = $("meta[name='csrf-token']").attr("content");
 
 var baseaddr = location.protocol + "//" + location.hostname + (location.port ? ":" + location.port : "");
+
+// This thing gets stored as JSON in a special reflection and contains
+// all new persistent state
+var mbpmagic = "MBPRO1SETTINGS"; // Magic string identifies settings reflection in list
+var mbpsettings =
+{
+	hrhistory: {} // contains hour change history
+};
+var settingsid = null; // Portfolio ID of settings object
+var chksettings = false; // Have we tried to find the portfolio entry?
+function loadsettings()
+{
+	return $.ajax(
+	{
+		method: "GET",
+		url: `${baseaddr}/student/portfolio`,
+		async: true
+	}).then(function (data)
+	{
+		var page = $(data);
+		var reflection = page.find(`.col-sm-12:has(:contains(${mbpmagic}))`);
+		if (reflection.length)
+		{
+			mbpsettings = a2obj(reflection.find(".description").text().substring(mbpmagic.length));
+			settingsid = parseInt(reflection.find(".actions").prop("id").split("-")[2]);
+		}
+		chksettings = true;
+	});
+}
+var getpromise = loadsettings(), savepromise = null; // savepromise is for first ever save
+
+// convert object to an unintrusive string
+function obj2a(obj)
+{
+	return escape(JSON.stringify(obj));
+}
+
+// unconvert
+function a2obj(a)
+{
+	return JSON.parse(unescape(a));
+}
+
+function savesettings()
+{
+	if (!chksettings)
+		return getpromise.then(savesettings);
+	if (savepromise !== null)
+		return savepromise.then(savesettings);
+	if (settingsid === null) // No reflection exists yet
+	{
+		return savepromise = $.ajax(
+		{
+			method: "POST",
+			url: `${baseaddr}/student/portfolio/resources`,
+			data:
+			{
+				"utf8": "\u2713",
+				"portfolio_resource_form[folder]": "personal",
+				"portfolio_resource_form[program]": 1,
+				"portfolio_resource_form[kind]": "journal",
+				"portfolio_resource_form[journal_body]": mbpmagic + obj2a(mbpsettings),
+				"commit": "Add to Portfolio"
+			},
+			headers:
+			{
+				"X-CSRF-TOKEN": csrftoken
+			},
+			async: true
+		}).then(loadsettings);
+	}
+	else // Edit existing reflection
+	{
+		return $.ajax(
+		{
+			method: "POST",
+			url: `${baseaddr}/student/portfolio/resources/${settingsid}?folder=personal`,
+			data:
+			{
+				"utf8": "\u2713",
+				"_method": "patch",
+				"portfolio_resource[body]": mbpmagic + obj2a(mbpsettings),
+				"commit": "Save Changes"
+			},
+			headers:
+			{
+				"X-CSRF-TOKEN": csrftoken
+			},
+			async: true
+		});
+	}
+}
 
 const catnamemap =
 {
@@ -63,6 +152,21 @@ const catnameinternal =
 
 var xprhours;
 var cattotals;
+
+// adds an element very very on top of the page
+function addontop(jqelem)
+{
+	var maxz = 0;
+	$(document.body).children().each(function ()
+	{
+		var z = parseInt($(this).css("z-index"));
+		if (z > maxz)
+			maxz = z;
+	});
+	jqelem.css("z-index", maxz + 1);
+	$(document.body).append(jqelem);
+	
+}
 
 // CAS Main Page Stuff
 function setup_cas()
@@ -189,16 +293,52 @@ function xpr_edit(event)
 	// Construct the editor with the number and categories of hours
 	// found from the Experience being edited.
 	var xprid = event.target.dataset.xprid;
-    var editor = $("<div style='position: absolute; background-color: white; text-align: right;' class='panel panel-default' />");
+    var editor = $("<div style='position: absolute; background-color: white; text-align: right; padding: 4px;' class='panel panel-default' />");
     var catthis = xprhours[xprid];
     for (var cat in catthis)
     {
 		if (catthis[cat] !== null)
 			editor.append(`<div class="input-group"><div class="input-group-btn"><button class="active btn cas-${catnameinternal[cat]}-type cas-btn-with-checkbox" type="button">${catnamemap[cat]}</button></div><input class="numeric float optional form-control mbp${cat}" min="0" max="1000" type="number" step="any" value="${catthis[cat]}"><span class="input-group-addon">hours</span></div>`);
 	}
-	editor.append("<a class='btn btn-light mbpcancel' href='javascript:null(0)'>Cancel</a><a class='btn btn-light mbpsave' href='javascript:null(0)'>Save</a>");
+	editor.append("<input class='form-control string mbpmessage' type='text' placeholder='Message (optional)' style='width: calc(100% - 4px);' /><a class='btn btn-light mbpcancel' href='javascript:null(0)'>Cancel</a><a class='btn btn-light mbpsave' href='javascript:null(0)'>Save</a>");
 	editor.children().css({margin: 2});
-	$(document.body).append(editor);
+	getpromise.done(function ()
+	{
+		if (xprid in mbpsettings.hrhistory)
+		{
+			console.log(mbpsettings);
+			var history = $("<div style='text-align: left; max-height: 100px; overflow-y: auto; display: block; margin: 2px;' />");
+			var even = false;
+			mbpsettings.hrhistory[xprid].forEach(function (entry)
+			{
+				console.log(entry);
+				var row = $(`<div />`);
+				row.css({"background-color": even ? "white" : "#EFF6FF"});
+				even = !even;
+				history.append(row);
+				var time = $("<span />");
+				row.append(time);
+				time.text(new Date(entry.timestamp).toLocaleString());
+				row.append($("<span> </span>")); // spacing
+				for (var cat in catthis)
+				{
+					var colcat = $(`<span style="color: ${catcolours[cat]}" />`);
+					row.append(colcat);
+					if (cat in entry.changes)
+					{
+						var val = entry.changes[cat];
+						if (val !== 0)
+							colcat.text(((val > 0) ? "+" : "") + val.toString() + cat);
+					}
+				}
+				var msgcol = $("<i style='display: block;' />");
+				row.append(msgcol);
+				msgcol.text(entry.message);
+			});
+			editor.append(history);
+		}
+	});
+	addontop(editor);
 	
 	// Keep the dialog's top-right corner lined up with the bottom-right
 	// corner of the link that opens it.
@@ -206,7 +346,7 @@ function xpr_edit(event)
 	{
 		var bodyrect = document.body.getBoundingClientRect();
 		var linkrect = event.target.getBoundingClientRect();
-		editor.css({top: linkrect.bottom, right: bodyrect.right - linkrect.right, width: 250});
+		editor.css({top: linkrect.bottom + window.scrollY, right: bodyrect.right - linkrect.right, width: 250});
 	}
 	updatepos();
 	$(window).resize(updatepos);
@@ -242,6 +382,26 @@ function xpr_edit(event)
 		}
 	}
 	
+	function ajerror()
+	{
+		var flasharea = $("#flash-area");
+		if (!flasharea.length)
+		{
+			flasharea = $("<div id='flash-area' />");
+			$(".content-wrapper").prepend(flasharea);
+		}
+		flasharea.html("<div class='flash error'>Failed to edit CAS hours.</div>");
+		canclose = true;
+		cancel();
+	}
+	
+	var editdoc = $.ajax(
+	{
+		method: "GET",
+		url: `${baseaddr}/student/ib/activity/cas/${xprid}/edit`,
+		async: true
+	});
+	
 	function submit(event)
 	{
 		if (!canclose)
@@ -249,7 +409,7 @@ function xpr_edit(event)
 		canclose = false;
 		editor.find("input, a").attr("disabled", "disabled");
 		editor.find(".mbpcancel").before($("<span>Processing... </span>"));
-		var waiting = 1; // Add another one for updating settings
+		var waiting = 2; // Wait for Experience + settings to save
 		function unwait()
 		{
 			waiting--;
@@ -259,44 +419,44 @@ function xpr_edit(event)
 				cancel();
 			}
 		}
+		
+		var changes = {};
+		
+		for (var cat in catthis)
+		{
+			if (catthis[cat] === null)
+				continue;
+			var value = editor.find(`.mbp${cat}`).val();
+			console.log(value);
+			var valint = parseInt(value);
+			changes[cat] = valint - catthis[cat];
+			catthis[cat] = valint;
+		}
+		
+		// Update hours history
+		getpromise.then(function ()
+		{
+			console.log("updating hours history");
+			console.log(mbpsettings);
+			if (!(xprid in mbpsettings.hrhistory))
+				mbpsettings.hrhistory[xprid] = [];
+			mbpsettings.hrhistory[xprid].unshift( // unshift is the 10x name for prepend
+			{
+				timestamp: new Date().getTime(),
+				changes: changes,
+				message: editor.find(".mbpmessage").val()
+			});
+		}).then(savesettings).then(unwait);
+		
 		// Get the edit form HTML, fill in the form, then submit it
 		// using AJAX.
-		$.ajax(
-		{
-			method: "GET",
-			url: `${baseaddr}/student/ib/activity/cas/${xprid}/edit`,
-			async: true
-		}).done(function (data)
+		editdoc.done(function (data)
 		{
 			console.log(data);
 			var page = $(data);
 			var form = page.find("form");
-			var changes = {};
-			for (var cat in catthis) // Copy the new values
-			{
-				if (catthis[cat] === null)
-					continue;
-				var value = editor.find(`.mbp${cat}`).val();
-				console.log(value);
-				form.find(`#cas_activity_${catnameinternal[cat]}_hours`).val(value);
-				var valint = parseInt(value);
-				changes[cat] = valint - catthis[cat];
-				catthis[cat] = valint; // update structure while we're here
-			}
-			
-			// JQuery just will not find this tag for some reason,
-			// so I use normal DOM
-			var csrftoken;
-			var pagedom = document.createElement("html");
-			pagedom.innerHTML = data;
-			for (const meta of pagedom.getElementsByTagName("meta"))
-			{
-				if (meta.getAttribute("name") === "csrf-token")
-				{
-					csrftoken = meta.getAttribute("content");
-					break;
-				}
-			}
+			for (var cat in changes) // Copy the new values
+				form.find(`#cas_activity_${catnameinternal[cat]}_hours`).val(catthis[cat]);
 			
 			console.log(csrftoken);
 			$.ajax(
@@ -346,7 +506,7 @@ function xpr_edit(event)
 				
 				// Allow the form to close
 				unwait();
-			});
+			}).fail(ajerror);
 		});
 	}
 	editor.click(function (event) { event.stopPropagation(); });
