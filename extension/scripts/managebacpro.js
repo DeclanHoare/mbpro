@@ -94,7 +94,10 @@ function savesettings()
 				"X-CSRF-TOKEN": csrftoken
 			},
 			async: true
-		}).then(loadsettings);
+		}).then(loadsettings).then(function ()
+		{
+			savepromise = null;
+		});
 	}
 	else // Edit existing reflection
 	{
