@@ -13,7 +13,7 @@ category and 150 hours total
 * You can click the total number of hours on any non-completed
 experience to quickly edit hours in a small pop-up without leaving the
 page
-** The use of this editor is logged with an optional message so that
+  * The use of this editor is logged with an optional message so that
 you can easily see whether or not you have already added hours for a
 certain event
 * A link to add a reflection has been added next to the displayed
