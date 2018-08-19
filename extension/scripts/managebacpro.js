@@ -25,16 +25,26 @@
 var csrftoken = $("meta[name='csrf-token']").attr("content");
 
 var baseaddr = location.protocol + "//" + location.hostname + (location.port ? ":" + location.port : "");
+var remoteaddr = location.href.split("#")[0];
 
-// This thing gets stored as JSON in a special reflection and contains
+// mbpsettings gets stored as JSON in a special reflection and contains
 // all new persistent state
-var mbpmagic = "MBPRO1SETTINGS"; // Magic string identifies settings reflection in list
-var mbpsettings =
+var mbpmagic, mbpsettings, settingsid, chksettings;
+
+var settings_was_init = false;
+
+function initsettings()
 {
-	hrhistory: {} // contains hour change history
-};
-var settingsid = null; // Portfolio ID of settings object
-var chksettings = false; // Have we tried to find the portfolio entry?
+	mbpmagic = "MBPRO1SETTINGS"; // Magic string identifies settings reflection in list
+	mbpsettings =
+	{
+		hrhistory: {} // contains hour change history
+	};
+	settingsid = null; // Portfolio ID of settings object
+	chksettings = false; // Have we tried to find the portfolio entry?
+	settings_was_init = true;
+}
+
 function loadsettings()
 {
 	return $.ajax(
@@ -54,7 +64,22 @@ function loadsettings()
 		chksettings = true;
 	});
 }
-var getpromise = loadsettings(), savepromise = null; // savepromise is for first ever save
+var getpromise, savepromise; // savepromise is for first ever save by account
+
+function setup_settings()
+{
+	if (!remoteaddr.startsWith(`${baseaddr}/student`)) // dump settings on logout and if not in the student view
+	{
+		settings_was_init = false;
+		return;
+	}
+	if (!settings_was_init)
+	{
+		initsettings();
+		getpromise = loadsettings();
+		savepromise = null;
+	}
+}
 
 // convert object to an unintrusive string
 function obj2a(obj)
@@ -174,7 +199,7 @@ function addontop(jqelem)
 // CAS Main Page Stuff
 function setup_cas()
 {
-	if (!location.href.split("#")[0].endsWith("/student/ib/activity/cas"))
+	if (!remoteaddr.endsWith("/student/ib/activity/cas"))
 		return;
 	// Since we get rid of the letters on the CAS badges, better leave
 	// a colour legend for convenience
@@ -524,6 +549,7 @@ function setup()
 	// reset XPR edit state
 	canclose = true;
 	// Call the submodules
+	setup_settings();
 	setup_cas();
 }
 
