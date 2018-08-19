@@ -25,6 +25,16 @@ GPL 3+
 
 ## Usage
 
-Currently you have to import the "unpacked" extension from the extension
-directory using Chrome's developer tools.
+The extension is available for installation from the
+[Chrome Web Store](https://chrome.google.com/webstore/detail/mbpro-for-managebac/cbaejnioionjcpiigpeklffaonbbodco)
+and
+[Add-ons for Firefox](https://addons.mozilla.org/en-US/firefox/addon/mbpro-for-managebac/).
+
+For development purposes, you can import manifest.json as a temporary
+extension in Firefox or the 'extension' directory as an unpacked
+extension in Chrome developer mode, via their respective extension
+managers.
+
+Once installed the new features will automatically insert themselves
+into the appropriate ManageBac pages.
 
