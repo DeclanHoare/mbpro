@@ -25,7 +25,7 @@
 var csrftoken = $("meta[name='csrf-token']").attr("content");
 
 var baseaddr = location.protocol + "//" + location.hostname + (location.port ? ":" + location.port : "");
-var remoteaddr = location.href.split("#")[0];
+var remoteaddr;
 
 // mbpsettings gets stored as JSON in a special reflection and contains
 // all new persistent state
@@ -546,6 +546,7 @@ function xpr_edit(event)
 
 function setup()
 {
+	remoteaddr = location.href.split("#")[0];
 	// reset XPR edit state
 	canclose = true;
 	// Call the submodules
